@@ -9,7 +9,7 @@ Summary:        Medical image visualization and analysis (Lazarus/Qt5)
 
 License:        BSD-2-Clause
 URL:            https://github.com/neurolabusc/MRIcron
-Source0:        %{name}-%{version}.tar.gz
+Source0:        https://github.com/neurolabusc/MRIcron/archive/%{git_commit}/%{name}-%{version}.tar.gz
 
 BuildRequires:  lazarus >= 2.0
 BuildRequires:  fpc
