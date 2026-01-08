@@ -1,90 +1,111 @@
 Name:           brainflow
 Version:        5.19.0
 Release:        1%{?dist}
-Summary:        Biosensor library for EEG, EMG, ECG and other data
-
+Summary:        Biosensor Library (EEG, EMG, ECG)
 License:        MIT
-URL:            https://brainflow.org/
-Source0:        https://github.com/brainflow-dev/brainflow/archive/refs/tags/%{version}.tar.gz
+URL:            https://brainflow.org
+Source0:        https://github.com/brainflow-dev/brainflow/archive/refs/tags/5.19.0.tar.gz
 
 BuildRequires:  gcc-c++
 BuildRequires:  cmake
 BuildRequires:  ninja-build
-BuildRequires:  libusb1-devel
 BuildRequires:  bluez-libs-devel
 BuildRequires:  dbus-devel
-BuildRequires:  opencv-devel
-BuildRequires:  chrpath
+BuildRequires:  libusb1-devel
+BuildRequires:  openblas-devel
 
 %description
 BrainFlow is a library intended to obtain, parse and analyze EEG, EMG, ECG 
-and other kinds of data from biosensors. It provides a uniform API for 
-many popular devices including OpenBCI, Muse, Emotiv, and others.
+and other kinds of data from biosensors.
 
-%package devel
+%package        devel
 Summary:        Development files for %{name}
 Requires:       %{name}%{?_isa} = %{version}-%{release}
 
-%description devel
-The %{name}-devel package contains the header files and libraries needed to
-develop applications that use BrainFlow.
+%description    devel
+The %{name}-devel package contains libraries and header files for
+developing applications that use %{name}.
 
 %prep
 %autosetup -p1
+
+# --- FIX: Force SONAME Versioning for Fedora Compliance ---
+# We append CMake commands to the main CMakeLists.txt to apply version info 
+# to the targets. This fixes 'invalid-soname' errors in rpmlint.
+# We use '5' (Major Version) as the SOVERSION.
+
+cat >> CMakeLists.txt <<EOF
+
+# PATCH INJECTED BY FEDORA SPEC FILE
+# Force versioning on shared libraries
+set_target_properties(BoardController PROPERTIES VERSION %{version} SOVERSION 5)
+set_target_properties(DataHandler PROPERTIES VERSION %{version} SOVERSION 5)
+set_target_properties(MLModule PROPERTIES VERSION %{version} SOVERSION 5)
+
+# Try to version the core wrapper if it is built as shared
+if(TARGET BrainFlow)
+    set_target_properties(BrainFlow PROPERTIES VERSION %{version} SOVERSION 5)
+endif()
+EOF
 
 %build
 %cmake -GNinja \
     -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_OYMOTION_SDK=OFF \
     -DBUILD_GFORCE_SDK=OFF \
+    -DBUILD_GFORCE_PRO_SDK=OFF \
+    -DBUILD_SHARED_LIBS=ON \
     -DKISSFFT_STATIC=OFF \
-    -DCMAKE_SKIP_INSTALL_RPATH=ON \
-    -DCMAKE_INSTALL_LIBDIR=%{_libdir}
+    -DCMAKE_SKIP_INSTALL_RPATH=ON
 
 %cmake_build
 
 %install
-%cmake_install
+mkdir -p %{buildroot}%{_libdir}
+mkdir -p %{buildroot}%{_includedir}/brainflow
 
-# 1. FIX LIB LOCATION: Move libraries from /usr/lib to /usr/lib64 if needed
-if [ "%{_lib}" == "lib64" ] && [ -d %{buildroot}/usr/lib ]; then
-    mkdir -p %{buildroot}%{_libdir}
-    cp -a %{buildroot}/usr/lib/* %{buildroot}%{_libdir}/
-    rm -rf %{buildroot}/usr/lib
-fi
+# 1. Install Shared Libraries (The .so files)
+#    We use 'find' to grab them from compiled/ or lib/ to be safe
+find . -name "libBoardController.so*" -exec cp -P {} %{buildroot}%{_libdir}/ \;
+find . -name "libDataHandler.so*"     -exec cp -P {} %{buildroot}%{_libdir}/ \;
+find . -name "libMLModule.so*"        -exec cp -P {} %{buildroot}%{_libdir}/ \;
 
-# 2. FIX HEADER LOCATION: Move from /usr/inc to /usr/include/brainflow
-if [ -d %{buildroot}/usr/inc ]; then
-    mkdir -p %{buildroot}%{_includedir}/brainflow
-    mv %{buildroot}/usr/inc/* %{buildroot}%{_includedir}/brainflow/
-    rm -rf %{buildroot}/usr/inc
-fi
+# 2. Install The C++ Wrapper Library (It was built as a static .a file)
+find . -name "libBrainflow.a" -exec cp {} %{buildroot}%{_libdir}/ \; || :
+# Just in case it was built as .so with a capital F
+find . -name "libBrainFlow.so*" -exec cp -P {} %{buildroot}%{_libdir}/ \; || :
 
-# 3. REMOVE BAD BINARIES (Proprietary/Incompatible Pre-compiled blobs)
-# These files cause dependency errors (ARM symbols, old GCC versions)
-rm -f %{buildroot}%{_libdir}/libunicorn_raspberry.so
-rm -f %{buildroot}%{_libdir}/libunicorn.so
-rm -f %{buildroot}%{_libdir}/libsensor_x64.so
-rm -f %{buildroot}%{_libdir}/libeego-SDK.so
-# Also remove static libs
-rm -f %{buildroot}%{_libdir}/*.a
-
-# 4. FIX PERMISSIONS (Ensure shared libs are executable for stripping)
-chmod 755 %{buildroot}%{_libdir}/*.so
-
-# 5. REMOVE RPATH
-find %{buildroot}%{_libdir} -name "*.so" -exec chrpath --delete {} \; || :
+# 3. Install Headers
+#    Install ALL headers found in src/ and cpp_package/
+#    This covers both the C API and the C++ API (BoardShim)
+find src -name "*.h" -exec cp {} %{buildroot}%{_includedir}/brainflow/ \;
+find cpp_package -name "*.h" -exec cp {} %{buildroot}%{_includedir}/brainflow/ \;
 
 %files
 %license LICENSE
 %doc README.md
-%{_libdir}/lib*.so
+%{_libdir}/libBoardController.so.*
+%{_libdir}/libDataHandler.so.*
+%{_libdir}/libMLModule.so.*
+# Include libBrainFlow.so if it exists (it might not)
+%if 0%{?_file_exists:%{_libdir}/libBrainFlow.so.*}
+%{_libdir}/libBrainFlow.so.*
+%endif
 
 %files devel
 %{_includedir}/brainflow/
-%{_libdir}/cmake/brainflow/
+%{_libdir}/libBoardController.so
+%{_libdir}/libDataHandler.so
+%{_libdir}/libMLModule.so
+# Explicitly claim the static library we just found
+%{_libdir}/libBrainflow.a
+# Claim the symlink if it exists (optional but good practice)
+%if 0%{?_file_exists:%{_libdir}/libBrainFlow.so}
+%{_libdir}/libBrainFlow.so
+%endif
 
 %changelog
-* Wed Jan 07 2026 Morgan Hough <morgan.hough@gmail.com> - 5.19.0-1
-- Initial RPM package for BrainFlow 5.19.0
-- Removed incompatible proprietary binary blobs
+* Wed Jan 07 2026 Your Name <your.email@example.com> - 5.19.0-1
+- Initial package for Fedora
+- Enforced SONAME versioning (SOVERSION 5)
+- Disabled proprietary SDKs
