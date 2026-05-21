@@ -1,19 +1,16 @@
-# Disable the strict RPATH check for this package
-%global __brp_check_rpaths %{nil}
-# Prevent build failure if there are files in the buildroot not listed in %files
-%define _unpackaged_files_terminate_build 0
-
+%define debug_package %{nil}
 
 Name:           dtk
 Version:        1.7.1
-Release:        1%{?dist}
+Release:        3%{?dist}
 Summary:        Scientific software platform (Inria)
 
-License:        BSD
+License:        BSD-3-Clause
 URL:            https://dtk.inria.fr/
 Source0:        https://gitlab.inria.fr/dtk/dtk/-/archive/%{version}/dtk-%{version}.tar.gz
 
-BuildRequires:  cmake
+BuildRequires:  cmake >= 3.2
+BuildRequires:  ninja-build
 BuildRequires:  gcc-c++
 BuildRequires:  qt5-qtbase-devel
 BuildRequires:  qt5-qtdeclarative-devel
@@ -21,86 +18,145 @@ BuildRequires:  qt5-qtscript-devel
 BuildRequires:  qt5-qtsvg-devel
 BuildRequires:  qt5-qttools-devel
 BuildRequires:  qt5-qtxmlpatterns-devel
+BuildRequires:  zlib-devel
 
 Requires:       qt5-qtbase
 
 %description
-The dtk framework is a platform for scientific software development.
+The dtk framework is a platform for scientific software development
+created at Inria. It provides a plugin-based architecture with core,
+logging, mathematical, and widget modules for building extensible
+applications.
 
 %package devel
 Summary:        Development files for %{name}
 Requires:       %{name}%{?_isa} = %{version}-%{release}
 
 %description devel
-Development libraries and headers for dtk.
+Development libraries, headers, and cmake config files for dtk.
 
 %prep
 %autosetup -n dtk-%{version}
 
 # ---------------------------------------------------------
-# 1. Remove broken/unneeded modules
+# 1. Remove dtkComposer (requires dtkDistributed + dtkWidgets, heavy)
 # ---------------------------------------------------------
-sed -i '/add_subdirectory(dtkDistributed)/d' src/CMakeLists.txt
 sed -i '/add_subdirectory(dtkComposer)/d' src/CMakeLists.txt
-sed -i '/dtkDistributedGuiApplication/d' src/dtkWidgets/CMakeLists.txt
-sed -i 's/dtkDistributed//g' src/dtkWidgets/CMakeLists.txt
 
 # ---------------------------------------------------------
-# 2. FIX: Make dtkCore C++20 Compatible (Global Rename)
+# 2. FIX: C++20 'concept' is a keyword — rename in dtkCore
 # ---------------------------------------------------------
-# The word "concept" is a keyword in C++20. We must rename it.
-# We use \b boundaries to replace the exact word "concept" with "pluginConcept"
-# in all header, source, and template files in dtkCore.
-find src/dtkCore -name "*.h" -o -name "*.cpp" -o -name "*.tpp" | xargs sed -i 's/\bconcept\b/pluginConcept/g'
+# dtkCore uses "concept" as a variable/method name for plugin metadata.
+# C++20 (used by some dependent builds) makes this a keyword.
+find src/dtkCore -name "*.h" -o -name "*.cpp" -o -name "*.tpp" | \
+    xargs sed -i 's/\bconcept\b/pluginConcept/g'
 
 # ---------------------------------------------------------
-# 3. FIX: Enforce C++17 in CMake
+# 3. Inject SOVERSION for Support libraries (upstream lacks it)
 # ---------------------------------------------------------
-# This ensures dtk itself builds with the correct standard
+for lib in dtkCoreSupport dtkGuiSupport dtkMathSupport dtkVrSupport; do
+  cmake_file="src/${lib}/CMakeLists.txt"
+  if [ -f "$cmake_file" ]; then
+    echo "set_target_properties(${lib} PROPERTIES VERSION %{version} SOVERSION 1)" >> "$cmake_file"
+  fi
+done
+
+# ---------------------------------------------------------
+# 4. FIX: Bug in dtkDistributedArray::range()
+# ---------------------------------------------------------
+# range() calls this->get() which doesn't exist — should be this->range() (recursive)
+sed -i 's/this->get(index + owner_capacity/this->range(index + owner_capacity/' \
+  src/dtkDistributed/dtkDistributedArray.tpp
+
+# ---------------------------------------------------------
+# 5. FIX: Enforce C++17
+# ---------------------------------------------------------
 sed -i 's/CMAKE_CXX_STANDARD 11/CMAKE_CXX_STANDARD 17/g' CMakeLists.txt
-echo 'add_compile_options(-std=c++17)' >> src/dtkCore/CMakeLists.txt
+
+# ---------------------------------------------------------
+# 6. FIX: cmake_minimum_required too old for CMake 4.0 (F44+)
+# ---------------------------------------------------------
+sed -i 's/cmake_minimum_required(VERSION 3.2.0)/cmake_minimum_required(VERSION 3.5...3.31)/' CMakeLists.txt
+
+# ---------------------------------------------------------
+# 7. FIX: dtkCpuid.cpp x86 inline asm fails on aarch64
+# ---------------------------------------------------------
+# DTK_BUILD_64 is true on aarch64 too, but cpuid is x86-only
+sed -i 's/#elif defined(DTK_BUILD_64)/#elif defined(DTK_BUILD_64) \&\& (defined(__x86_64__) || defined(__i386__))/' \
+    src/dtkCoreSupport/dtkCpuid.cpp
 
 %build
-export CXXFLAGS="%{optflags} -std=c++17 -Wno-error=deprecated-declarations"
+export CXXFLAGS="%{optflags} -std=c++17 -include cstdint -Wno-error=deprecated-declarations"
+
 %cmake \
+    -GNinja \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_CXX_STANDARD=17 \
     -DCMAKE_CXX_STANDARD_REQUIRED=ON \
+    -DCMAKE_SKIP_INSTALL_RPATH=ON \
     -DBUILD_SHARED_LIBS:BOOL=ON \
     -DDTK_BUILD_TESTS:BOOL=OFF \
     -DDTK_BUILD_EXAMPLES:BOOL=OFF \
     -DDTK_BUILD_DOCUMENTATION:BOOL=OFF \
-    -DDTK_BUILD_DISTRIBUTED:BOOL=OFF \
-    -DDTK_BUILD_COMPOSER:BOOL=OFF 
+    -DDTK_BUILD_DISTRIBUTED:BOOL=ON \
+    -DDTK_BUILD_COMPOSER:BOOL=OFF \
+    -DDTK_BUILD_SCRIPT:BOOL=OFF \
+    -DDTK_BUILD_WRAPPERS:BOOL=OFF \
+    -DDTK_BUILD_SUPPORT_CORE:BOOL=ON \
+    -DDTK_BUILD_SUPPORT_CONTAINER:BOOL=OFF \
+    -DDTK_BUILD_SUPPORT_COMPOSER:BOOL=OFF \
+    -DDTK_BUILD_SUPPORT_DISTRIBUTED:BOOL=OFF \
+    -DDTK_BUILD_SUPPORT_GUI:BOOL=ON \
+    -DDTK_BUILD_SUPPORT_MATH:BOOL=ON \
+    -DDTK_BUILD_SUPPORT_PLOT:BOOL=OFF \
+    -DDTK_BUILD_SUPPORT_VR:BOOL=ON
 
 %cmake_build
 
 %install
-# Clear any previous buildroot residue
-rm -rf %{buildroot}
 %cmake_install
 
-# This creates shims for EVERY module dtk-imaging might ask for
-# Added: Core, Log, Math, Meta, Fonts, Widgets, Themes, Settings, Distributed, Composer
-for module in Core Log Math Meta Fonts Widgets Themes Settings Distributed Composer; do
+# Remove SIP wrapper stubs (Python wrappers not built)
+rm -rf %{buildroot}/usr/wrp
+
+# Create cmake config shims for modules that downstream (medInria) may request
+# via find_package(dtk<Module>). These redirect to the main dtkConfig.cmake.
+for module in Fonts Themes Settings; do
   dest=%{buildroot}%{_libdir}/cmake/dtk/dtk${module}Config.cmake
   echo "include(\${CMAKE_CURRENT_LIST_DIR}/dtkConfig.cmake)" > $dest
 done
+
+%ldconfig_scriptlets
 
 %files
 %license LICENSE.md
 %{_bindir}/dtkPluginsMetaInfoFetcher
 %{_bindir}/dtkDeploy
 %{_bindir}/dtkConceptGenerator
+%{_bindir}/dtkDistributedDashboard
+%{_bindir}/dtkDistributedServer
+%{_bindir}/dtkDistributedSlave
+%{_bindir}/dtkDistributedSlides
 %{_libdir}/libdtk*.so.*
 
 %files devel
 %{_includedir}/dtk*
 %{_libdir}/libdtk*.so
-# Updated line to include ALL cmake files, including FindSIP.py
-%{_libdir}/cmake/dtk/*
-/usr/wrp/
+%{_libdir}/cmake/dtk/
 
 %changelog
+* Mon Mar 09 2026 Morgan Hough <morgan.hough@gmail.com> - 1.7.1-3
+- Fix aarch64: guard x86 cpuid inline asm with arch check
+- Fix F44+: bump cmake_minimum_required to 3.5 for CMake 4.0 compat
+
+* Tue Mar 03 2026 Morgan Hough <morgan.hough@gmail.com> - 1.7.1-2
+- Enable support modules needed by medInria: Core, GUI, Math, VR, Distributed
+- Enable dtkDistributed module (required by medInria layer)
+- Use Ninja generator, add cstdint include for GCC 15
+- Use CMAKE_SKIP_INSTALL_RPATH instead of disabling brp-check-rpaths
+- Add ldconfig scriptlets for shared libraries
+- Remove unpackaged_files_terminate_build hack, list all files explicitly
+- Remove /usr/wrp/ stale entry from devel files
+
 * Tue Jan 06 2026 Morgan Hough <morgan.hough@gmail.com> - 1.7.1-1
-- Fixed manifest, RPATHs, and disabled broken modules
+- Initial package for dtk 1.7.1

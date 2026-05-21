@@ -10,7 +10,7 @@
 
 Name:           itksnap
 Version:        4.4.0~beta2
-Release:        0.5%{?dist}
+Release:        0.6%{?dist}
 Summary:        Medical image segmentation tool for 3D/4D biomedical images
 
 License:        GPL-3.0-or-later
@@ -28,8 +28,10 @@ BuildRequires:  ninja-build
 BuildRequires:  gcc-c++
 
 # ITK 5.4+ from our COPR; installed to non-standard suffix path so ITK_DIR is
-# set explicitly in %%build.
-BuildRequires:  InsightToolkit5-devel
+# set explicitly in %%build. Pin to 5.4.6 — the -0.5 build against 5.4.5
+# segfaulted in libjsoncpp.so.26's static initializer on systems with 5.4.6
+# installed; the fresh build picks up current jsoncpp/gdcm chroot state.
+BuildRequires:  InsightToolkit5-devel >= 5.4.6
 
 # VTK 9.3.1+ required; Fedora ships 9.2.6 so this comes from our COPR.
 BuildRequires:  vtk-devel
@@ -82,7 +84,10 @@ built as subprojects alongside ITK-SNAP.
 
 
 %prep
-%setup -q -n itksnap-%{itksnap_commit}
+# Tarball expands to itksnap-%%{snap_ver} (with hyphen, e.g.
+# itksnap-4.4.0-beta2). The %%{itksnap_commit} macro was removed in an
+# earlier cleanup; restore use of %%{snap_ver}.
+%setup -q -n itksnap-%{snap_ver}
 
 # Populate git submodule directories from the pinned tarballs.
 # The upstream CMakeLists hard-codes ADD_SUBDIRECTORY into Submodules/{c3d,greedy};
@@ -127,9 +132,11 @@ rm -f %{buildroot}%{_bindir}/qt.conf
 %files
 %license COPYING
 
-# Main application — the forwarding wrapper and the real binary
+# Main application — the forwarding wrapper and the real binary.
+# Upstream installs the real binary under snap-${VERSION}/ which includes
+# the -beta2 suffix; use %%{snap_ver} to track the version cleanly.
 %{_bindir}/itksnap
-%{_prefix}/lib/snap-4.4.0/ITK-SNAP
+%{_prefix}/lib/snap-%{snap_ver}/ITK-SNAP
 
 # Workspace tool (CLI for managing ITK-SNAP workspaces)
 %{_bindir}/itksnap-wt
@@ -148,6 +155,15 @@ rm -f %{buildroot}%{_bindir}/qt.conf
 
 
 %changelog
+* Wed May 20 2026 Morgan Hough <morgan@hough.dev> - 4.4.0~beta2-0.6
+- Rebuild against InsightToolkit5 5.4.6 (the -0.5 RPM was built against
+  5.4.5 on 2026-05-02 and segfaults at startup against a system with
+  ITK 5.4.6 installed: libjsoncpp.so.26's static initializer crashes
+  during dl_init for the ITK-SNAP binary, presumably due to ABI drift
+  in a VTK/ITK transitive that pulled in jsoncpp differently between
+  the build chroot then and the user system now).
+- Bump InsightToolkit5-devel BR to >= 5.4.6.
+
 * Mon May 04 2026 Morgan Hough <morgan@hough.dev> - 4.4.0-1
 - Update to stable 4.4.0 release (September 9, 2025)
 

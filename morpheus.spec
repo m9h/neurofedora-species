@@ -1,13 +1,8 @@
 %define debug_package %{nil}
 
-# Private libraries live in %%{_libdir}/morpheus — filter them from
-# auto-requires/provides so they don't leak as unsatisfied dependencies
-%global __requires_exclude ^lib(MorpheusMLconv|XMLUtils|gnuplot_interface|muParser|tiny-process-library|qtsingleapp)\\.so
-%global __provides_exclude ^lib(MorpheusMLconv|XMLUtils|gnuplot_interface|muParser|tiny-process-library|qtsingleapp)\\.so
-
 Name:           morpheus
-Version:        2.3.7
-Release:        3%{?dist}
+Version:        2.3.9
+Release:        1%{?dist}
 Summary:        Modeling environment for multicellular systems biology
 
 License:        BSD-3-Clause
@@ -37,7 +32,6 @@ BuildRequires:  qt5-qttools-devel
 BuildRequires:  qt5-qtwebengine-devel
 BuildRequires:  desktop-file-utils
 BuildRequires:  libsbml-devel
-BuildRequires:  patchelf
 
 Requires:       gnuplot
 
@@ -69,7 +63,7 @@ GUI for creating, editing, running, and visualizing multicellular
 models.
 
 %prep
-%autosetup -n morpheus-%{version}
+%autosetup -n morpheus-v%{version}
 
 # Morpheus bundles muParser, gnuplot_i, tiny-process-lib, qtsingleapp.
 # Fedora 43 xtensor 0.27.0 restructured its include layout (xtensor/containers/
@@ -133,30 +127,12 @@ export CXXFLAGS="%{optflags} -std=c++17"
     -DBUILD_TESTING=OFF \
     -DDOWNLOAD_XTENSOR=OFF \
     -DMORPHEUS_STATIC_BUILD=OFF \
-    -DMORPHEUS_OPENMP=ON \
-    -DCMAKE_INSTALL_RPATH=%{_libdir}/morpheus \
-    -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=OFF
+    -DMORPHEUS_OPENMP=ON
 
 %cmake_build
 
 %install
 %cmake_install
-
-# cmake install doesn't install the private shared libraries — do it manually
-install -d %{buildroot}%{_libdir}/morpheus
-install -m 0755 %{__cmake_builddir}/3rdparty/muParser/libmuParser.so %{buildroot}%{_libdir}/morpheus/
-install -m 0755 %{__cmake_builddir}/3rdparty/gnuplot_i/libgnuplot_interface.so %{buildroot}%{_libdir}/morpheus/
-install -m 0755 %{__cmake_builddir}/3rdparty/tiny-process/libtiny-process-library.so %{buildroot}%{_libdir}/morpheus/
-install -m 0755 %{__cmake_builddir}/3rdparty/qtsingleapp/libqtsingleapp.so %{buildroot}%{_libdir}/morpheus/
-install -m 0755 %{__cmake_builddir}/xmlutils/libXMLUtils.so %{buildroot}%{_libdir}/morpheus/
-install -m 0755 %{__cmake_builddir}/morpheusML/libMorpheusMLconv.so %{buildroot}%{_libdir}/morpheus/
-
-# Fix RPATH: strip stale build-tree paths from all ELF files, set private libdir
-for f in %{buildroot}%{_bindir}/morpheus \
-         %{buildroot}%{_bindir}/morpheus-gui \
-         %{buildroot}%{_libdir}/morpheus/*.so; do
-    patchelf --set-rpath %{_libdir}/morpheus "$f" 2>/dev/null || true
-done
 
 # Install desktop file
 desktop-file-validate %{buildroot}%{_datadir}/applications/morpheus.desktop || true
@@ -164,27 +140,17 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/morpheus.desktop || t
 %files
 %license LICENSE.md
 %{_bindir}/morpheus
-%dir %{_libdir}/morpheus
-%{_libdir}/morpheus/libmuParser.so
-%{_libdir}/morpheus/libgnuplot_interface.so
-%{_libdir}/morpheus/libtiny-process-library.so
-%{_libdir}/morpheus/libXMLUtils.so
-%{_libdir}/morpheus/libMorpheusMLconv.so
 
 %files gui
 %{_bindir}/morpheus-gui
-%{_libdir}/morpheus/libqtsingleapp.so
 %{_datadir}/applications/morpheus.desktop
 %{_datadir}/icons/hicolor/scalable/apps/morpheus.svg
 %dir %{_datadir}/morpheus
 %{_datadir}/morpheus/
 
 %changelog
-* Fri Mar 27 2026 Morgan Hough <morgan.hough@gmail.com> - 2.3.7-3
-- Install private shared libraries to %%{_libdir}/morpheus
-- Set RPATH on binaries to find private libraries
-- Filter auto-requires/provides for private libraries
-- Fix unresolvable dependency on libMorpheusMLconv, libXMLUtils, etc.
+* Wed Apr 23 2026 Morgan Hough <morgan.hough@gmail.com> - 2.3.9-1
+- Update to 2.3.9
 
 * Sat Mar 14 2026 Morgan Hough <mhough@fedoraproject.org> - 2.3.7-2
 - Bundle xtensor/xtl/xsimd 0.24.6/0.7.5/10.0.0 (Fedora 43 xtensor 0.27.0 incompatible headers)

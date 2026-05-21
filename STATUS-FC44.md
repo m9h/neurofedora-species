@@ -1,33 +1,65 @@
 # Fedora 44 Build Status & Plan
 
-## 🚩 Current Blockers (GCC 15 / C23)
-Fedora 44 has transitioned to GCC 15, which defaults to **C23** (`-std=gnu23`). This causes several issues:
-- **Function Prototypes:** `void foo()` now means `void foo(void)`, causing pointer type mismatches in older C code.
-- **Stricter C++ Templates:** Flagging previously hidden bugs in ITK and other complex libraries.
-- **Missing Headers:** Implicit includes of `<cstdint>` are gone.
+## ✅ Recently Verified & Fixed (GCC 15 / ITK 5.4)
+The following packages have been updated and verified to build on Fedora 44 (Rawhide) with GCC 15 and ITK 5.4.5:
 
-## 📊 Package Specifics
+### 📦 freesurfer (8.2.0-7)
+- **Status:** ✅ Fixed.
+- **Fixes:** Applied `-std=gnu17` for bundled C libs, `-fpermissive` for C++, and unbundled `libxml2`, `expat`, `tetgen`. Guarded SSE intrinsics for aarch64.
 
-### ❌ freesurfer (8.2.0)
-- **Status:** Failing on FC44.
-- **Probable Cause:** ITK dependency issues and C23 strictness.
-- **Plan:** Apply `-fpermissive` and check for missing `<cstdint>` in patches.
+### 📦 mrtrix3 (3.0.8-1)
+- **Status:** ✅ Fixed.
+- **Fixes:** Added `-std=gnu++17` and `-fpermissive` to handle GCC 15 template strictness.
 
-### ❌ mrtrix3 (3.0.8)
-- **Status:** Failing on FC44.
-- **Probable Cause:** Eigen3 compatibility or GCC 15 template strictness.
-- **Plan:** Apply `-std=gnu++17` or `-fpermissive`.
+### 📦 simnibs (4.6.0-1)
+- **Status:** ✅ Updated.
+- **Fixes:** Ported to CGAL 6 (replaced `boost::optional` with `std::optional`, fixed const-correctness). Fixed GCC 15 C/C++ standard compliance.
 
-### ❌ simnibs (4.5.0)
-- **Status:** Failing on FC44.
-- **Plan:** Update to **4.6.0** upstream and apply C23 fixes if needed.
+### 📦 python-samseg (0.5a0-1)
+- **Status:** ✅ Updated.
+- **Fixes:** Migrated to ITK 5.4 API (SmartPointer `nullptr` fixes, `itkMacro.h` includes).
 
-### ❌ python-samseg (0.4a0)
-- **Status:** Failing on FC44.
-- **Plan:** Update to latest (check FreeSurfer 8.2.0 compatibility).
+### 📦 python-charm-gems (1.3.3-2)
+- **Status:** ✅ Fixed.
+- **Fixes:** Complete migration to ITK 5.4 threading and SmartPointer APIs.
+
+### 📦 quit (3.4-1)
+- **Status:** ✅ Fixed.
+- **Fixes:** Workaround for `fmt` v11 implicit ostream removal. Added `-Wno-template-body` for GCC 15.
+
+### 📦 babelbrain (0.8.1-1)
+- **Status:** ✅ Fixed.
+- **Fixes:** Official update to v0.8.1 release tag. Verified build on Fedora 44.
+
+### 📦 open-ephys-gui (1.0.2-1)
+- **Status:** ✅ Fixed.
+- **Fixes:** Major update to 1.0. Migrated to **Qt6 and CMake**. Fixed manual installation paths for binary, plugins, and resources.
+
+### 📦 labrecorder (1.17.1-1)
+- **Status:** ✅ Fixed.
+- **Fixes:** Updated to latest and migrated to **Qt6**. Fixed `liblsl` unbundling.
+
+### 📦 brainflow (5.21.0-1)
+- **Status:** ✅ Updated.
+- **Fixes:** Verified build for version 5.21.0.
+
+### 📦 morpheus (2.3.9-1)
+- **Status:** ✅ Updated.
+- **Fixes:** Fixed `%autosetup` directory mapping for version 2.3.9.
+
+### 📦 afni (26.1.01-1)
+- **Status:** ✅ Updated.
+- **Fixes:** Verified build for version 26.1.01.
+
+## 🚧 Current Blockers
+### ❌ medInria
+- **Status:** Failing.
+- **Issue:** SuperBuild trying to download dependencies.
+- **Plan:** Further investigation into proper unbundling of ITK 6 / VTK 9 for medInria 5.
+
 
 ## 🛠️ General Workarounds
-For packages failing due to C23/GCC 15, we will attempt:
+For packages failing due to C23/GCC 15, we continue to use:
 1. `export CFLAGS="$CFLAGS -std=gnu17"`
-2. `export CXXFLAGS="$CXXFLAGS -fpermissive"`
-3. Explicitly adding `#include <cstdint>` where needed.
+2. `export CXXFLAGS="$CXXFLAGS -fpermissive -include cstdint"`
+3. `-Wno-template-body` for complex C++ templates.

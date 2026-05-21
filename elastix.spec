@@ -3,7 +3,7 @@
 
 Name:           elastix
 Version:        5.3.1
-Release:        3%{?dist}
+Release:        4%{?dist}
 Summary:        A toolbox for rigid and nonrigid registration of images
 
 License:        Apache-2.0
@@ -12,7 +12,7 @@ Source0:        https://github.com/SuperElastix/elastix/archive/%{commit}/%{name
 
 BuildRequires:  cmake
 BuildRequires:  gcc-c++
-BuildRequires:  InsightToolkit5-devel >= 5.4
+BuildRequires:  InsightToolkit5-devel >= 5.4.6
 BuildRequires:  eigen3-devel
 BuildRequires:  hdf5-devel
 %if 0%{?fedora}
@@ -68,6 +68,10 @@ rm -f %{buildroot}/usr/lib/*.a
 %{_libdir}/libelx-ANNlib.so
 
 %changelog
+* Mon May 18 2026 Morgan Hough <morgan.hough@gmail.com> - 5.3.1-4
+- Rebuild against InsightToolkit5 5.4.6 (GDCM CVE-2026-3650, F44 target)
+- Bump BuildRequires: InsightToolkit5-devel >= 5.4.6
+
 * Wed Apr 23 2026 Morgan Hough <morgan.hough@gmail.com> - 5.3.1-1
 - Update to 5.3.1
 

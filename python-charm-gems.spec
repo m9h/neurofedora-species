@@ -25,7 +25,7 @@ BuildRequires:  pybind11-devel
 BuildRequires:  InsightToolkit5-devel >= 5.4.5
 BuildRequires:  zlib-devel
 # ITK 5.4.5 VtkGlue cmake config transitively requires VTK at find_package time
-BuildRequires:  vtk-devel
+BuildRequires:  vtk-devel < 9.3
 BuildRequires:  java-devel
 BuildRequires:  libtheora-devel
 
